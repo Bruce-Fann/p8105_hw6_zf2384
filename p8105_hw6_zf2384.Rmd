@@ -1,0 +1,31 @@
+---
+title: "Homework 6"
+author: "Zichen Fan"
+date: "2025-11-27"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Problem 1 
+```{r}
+library(readr)
+homicide = read_csv("data/homicide-data.csv")
+
+```
+
+
+Problem 2
+```{r import data 2}
+library(p8105.datasets)
+weather = data("weather_df")
+
+```
+
+Problem 3
+```{r}
+birth =  read_csv("data/birthweight.csv")
+
+```
+
