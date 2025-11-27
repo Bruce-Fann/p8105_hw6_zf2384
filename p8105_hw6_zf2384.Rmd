@@ -97,8 +97,78 @@ city_results |>
 Problem 2
 ```{r import data 2}
 library(p8105.datasets)
+library(modelr)
 data("weather_df")
 head(weather_df)
+
+# Perform bootstrap analysis
+boot_results = 
+  weather_df |> 
+  # 1. Generate 5000 bootstrap samples
+  bootstrap(n = 5000) |> 
+  
+  # 2. Fit models and extract results for each sample
+  mutate(
+    # Fit linear regression: tmax ~ tmin + prcp
+    models = map(strap, \(df) lm(tmax ~ tmin + prcp, data = df)),
+    
+    # Extract model statistics (for R-squared)
+    results_glance = map(models, broom::glance),
+    
+    # Extract coefficients (for betas)
+    results_tidy = map(models, broom::tidy)
+  ) |> 
+  
+  # 3. Clean and calculate the specific quantities
+  mutate(
+    # Extract R-squared
+    r_squared = map_dbl(results_glance, \(x) pull(x, r.squared)),
+    
+    # Calculate the product of Beta1 (tmin) and Beta2 (prcp)
+    beta_ratio = map_dbl(results_tidy, \(df) {
+      b1 = df |> filter(term == "tmin") |> pull(estimate)
+      b2 = df |> filter(term == "prcp") |> pull(estimate)
+      return(b1 / b2) 
+    })
+  ) |> 
+  select(r_squared, beta_ratio)
+
+```
+
+```{r visualization}
+
+# r square distribution
+p1 = boot_results |> 
+  ggplot(aes(x = r_squared)) +
+  geom_density(fill = "skyblue", alpha = 0.6) + # 或者用 geom_histogram()
+  labs(
+    title = "Distribution of Estimated R-squared",
+    x = "R Squared",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# Beta Quantity
+p2 = boot_results |> 
+  filter(is.finite(beta_ratio)) |> # 剔除可能的 Inf 值
+  ggplot(aes(x = beta_ratio)) +
+  geom_density(fill = "lightgreen", alpha = 0.6) +
+  labs(
+    title = "Distribution of Estimated Beta Quantity",
+    x = "Value (beta1 / beta2)",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+
+print(p1)
+print(p2)
+
+# calculate 95% CI
+ci_r2 = quantile(boot_results$r_squared, probs = c(0.025, 0.975))
+ci_beta = quantile(boot_results$beta_ratio, probs = c(0.025, 0.975), na.rm = TRUE)
+
+list(ci_r_squared = ci_r2, ci_beta_ratio = ci_beta)
 ```
 
 Problem 3
