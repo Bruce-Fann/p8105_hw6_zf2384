@@ -8,19 +8,97 @@ output: github_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-Problem 1 
-```{r}
+## Problem 1 
+```{r tide dataset}
 library(readr)
+library(tidyverse)
 homicide = read_csv("data/homicide-data.csv")
 
+homicide = homicide|>
+  mutate(city_state = str_c(city, state, sep = ", "),
+         solved = as.numeric(disposition == "Closed by arrest"),
+         victim_age = as.numeric(victim_age)
+  ) |> 
+  filter(
+    !city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL"),
+    victim_race %in% c("White", "Black")
+  )
 ```
 
+```{r mod1}
+baltimore_df = 
+  homicide |> 
+  filter(city_state == "Baltimore, MD")
+
+## Generalized Linear Model
+fit_bt= 
+  glm(solved ~ victim_age + victim_sex + victim_race, 
+      data = baltimore_df, 
+      family = binomial())
+
+
+# conf.int = TRUE calculates confidence interval
+# exponentiate = TRUE calculates Odds Ratio)
+baltimore_results = 
+  fit_bt |> 
+  broom::tidy(conf.int = TRUE, exponentiate = TRUE)
+
+# according to letter order, Female will be Reference group
+baltimore_results |> 
+  filter(term == "victim_sexMale") |> 
+  select(term, OR = estimate, conf.low, conf.high) |> 
+  knitr::kable(digits = 3)
+```
+
+```{r}
+library(broom)
+
+city_results = homicide|> 
+  mutate(
+        victim_sex = fct_relevel(factor(victim_sex), "Female") 
+  )  |> 
+  ## nest by city
+  nest(data = -city_state) |> 
+  mutate(
+    # run glm to every line
+    models = map(data, \(df) glm(solved ~ victim_age + victim_sex + victim_race, 
+                                 data = df, 
+                                 family = binomial())),
+    # tidy and extract result
+    results = map(models, \(mod) tidy(mod, conf.int = TRUE, exponentiate = TRUE))
+  ) |> 
+  select(city_state, results) |> 
+  unnest(results) |> 
+  filter(term == "victim_sexMale") |> 
+  select(city_state, OR = estimate, conf.low, conf.high)
+
+# arrange and check results 
+city_results |> 
+  arrange(OR) |> 
+  knitr::kable(digits = 3)
+```
+
+```{r plot 1}
+
+city_results |> 
+  mutate(city_state = fct_reorder(city_state, OR)) |> 
+  ggplot(aes(x = city_state, y = OR)) +
+  geom_point() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) + 
+  geom_hline(yintercept = 1, color = "red", linetype = "dashed") +
+   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))+
+  labs(
+    title = "Odd ratio of male vs female of solved homiceide",
+    x = "City",
+    y = "Odds Ratio (OR)",
+    ) 
+```
 
 Problem 2
 ```{r import data 2}
 library(p8105.datasets)
-weather = data("weather_df")
-
+data("weather_df")
+head(weather_df)
 ```
 
 Problem 3
