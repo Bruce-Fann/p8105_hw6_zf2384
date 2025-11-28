@@ -140,7 +140,7 @@ boot_results =
 # r square distribution
 p1 = boot_results |> 
   ggplot(aes(x = r_squared)) +
-  geom_density(fill = "skyblue", alpha = 0.6) + # 或者用 geom_histogram()
+  geom_density(fill = "skyblue", alpha = 0.6) + #  geom_histogram()
   labs(
     title = "Distribution of Estimated R-squared",
     x = "R Squared",
@@ -173,7 +173,91 @@ list(ci_r_squared = ci_r2, ci_beta_ratio = ci_beta)
 
 Problem 3
 ```{r}
-birth =  read_csv("data/birthweight.csv")
+birthweight <- read_csv("data/birthweight.csv")
 
+ birthweight_clean <- birthweight |>
+  mutate(
+    babysex = as.factor(babysex),
+    frace = as.factor(frace),
+    mrace = as.factor(mrace),
+    malform = as.factor(malform)
+  ) |>
+  drop_na()
+
+glimpse(birthweight_clean)
+sum(is.na(birthweight_clean))
+
+
+```
+
+```{r ,model}
+my_model = lm(bwt ~ bhead + blength + babysex + gaweeks + smoken + wtgain, data = birthweight_clean)
+
+summary(my_model)
+
+birthweight_clean |>
+  add_predictions(my_model) |>
+  add_residuals(my_model) |>
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  labs(
+    title = "Residuals vs Fitted Values (My Model)",
+    x = "Fitted Values (Predicted Birthweight)",
+    y = "Residuals"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+set.seed(123) #
+cv_df <- crossv_mc(birthweight_clean, n = 100)
+
+# 2.run RMSE
+cv_results <- cv_df |>
+  mutate(
+    train = map(train, as_tibble),
+    
+    #  My Proposed Model
+    model_my = map(train, \(df) lm(bwt ~ bhead + blength + babysex + gaweeks + smoken + wtgain, data = df)),
+    
+    # Length + Gestational Age (Main effects only)
+    model_main = map(train, \(df) lm(bwt ~ blength + gaweeks, data = df)),
+    
+    # Head + Length + Sex + All Interactions
+    model_inter = map(train, \(df) lm(bwt ~ bhead * blength * babysex, data = df))
+  ) |>
+  mutate(
+    rmse_my    = map2_dbl(model_my, test, rmse),
+    rmse_main  = map2_dbl(model_main, test, rmse),
+    rmse_inter = map2_dbl(model_inter, test, rmse)
+  )
+
+# vis
+cv_results |>
+  select(starts_with("rmse")) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "model",
+    values_to = "rmse",
+    names_prefix = "rmse_"
+  ) |>
+  mutate(model = fct_reorder(model, rmse)) |> #
+  ggplot(aes(x = model, y = rmse, fill = model)) +
+  geom_violin() +
+  labs(
+    title = "Cross-validated Prediction Error (RMSE) Comparison",
+    x = "Model",
+    y = "RMSE"
+  ) +
+  theme_minimal()
+
+# average RMSE values
+cv_results |>
+  select(starts_with("rmse")) |>
+  summarise(across(everything(), mean))
 ```
 
